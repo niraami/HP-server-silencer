@@ -1,0 +1,9 @@
+main.c:69:13:setDutyCycle	32	static
+main.c:79:6:HAL_TIM_IC_CaptureCallback	32	static
+main.c:99:5:main	8	static
+main.c:150:6:SystemClock_Config	96	static
+main.c:195:13:MX_TIM1_Init	112	static
+main.c:275:13:MX_TIM2_Init	40	static
+main.c:323:13:MX_USART2_UART_Init	8	static
+main.c:358:13:MX_GPIO_Init	16	static
+main.c:375:6:Error_Handler	4	static
