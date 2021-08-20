@@ -1,0 +1,48 @@
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+
+# Shared objects (inc. Windows DLLs)
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+
+# Misc
+*.map
+*.mxproject
+*.code-workspace
+*.vscode/
+
+# Eclipse CDT project files
+.cproject*
+/src/.project
+/src/.settings/
+
+# Build folders
+/src/[Bb]uild
+/src/[Dd]ebug
+/src/[Rr]elease
+
+# Vagrant directory
+/src/.vagrant/
+
+# Include makefiles
+!Makefile
+*~

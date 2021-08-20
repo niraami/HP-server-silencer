@@ -22,7 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdint.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -32,6 +32,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define PWM_OUTPUT_CHANNEL TIM_CHANNEL_1
+#define PWM_INPUT_CHANNEL TIM_CHANNEL_2
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -63,30 +65,48 @@ static void MX_TIM2_Init(void);
 /* USER CODE BEGIN 0 */
 extern void initialise_monitor_handles(void);
 
+/** Last captured timer period */
 static uint32_t ccr2_last = 0;
-static uint8_t duty_cycle = 0;
 
-static void setDutyCycle(TIM_HandleTypeDef* const htim, uint32_t channel, float duty_cycle) {
+/** Last measured duty cycle */
+static uint8_t cur_duty_cycle = 0;
+
+/**
+ * @brief Sets the PWM duty cycle for the desired TIMER channel
+ * @param htim Timer handle
+ * @param channel PWM generation channel
+ * @param duty_cycle Desired duty cycle in percent. Resolution is calculated
+ * based on the period configured of the timer instance.
+ */
+static void setDutyCycle(TIM_HandleTypeDef* const htim,
+		uint32_t channel, float duty_cycle)
+{	
+	// Constrain the provided duty cycle to avoid undefined behaviour
 	if (duty_cycle > 100) duty_cycle = 100;
 	if (duty_cycle < 0) duty_cycle = 0;
 
-	float pw_resolution = (((float)(*htim).Init.Period + 1.0f) / 100.0f);
-
+	// Calculate the period resolution (1% of the period value)
+	float pw_resolution = ((float)htim->Init.Period + 1.0f) / 100.0f;
+	// Calculate & set the actual PWM period
 	uint16_t pw_desired = pw_resolution * duty_cycle;
 	__HAL_TIM_SET_COMPARE(htim, channel, pw_desired);
 }
 
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
-	uint32_t ccr2_capture = HAL_TIM_ReadCapturedValue(&htim2, TIM_CHANNEL_2);
+	/** Current timer period */
+	uint32_t ccr2 = HAL_TIM_ReadCapturedValue(&htim2, PWM_INPUT_CHANNEL);
 
+	// If this is the first measurement cycle, just store the captured value
 	if (ccr2_last == 0)
-		ccr2_last = ccr2_capture;
-	else if (ccr2_last != ccr2_capture) {
-		duty_cycle = (uint8_t) (0.5 * (
-			(ccr2_capture > ccr2_last)
-				?ccr2_capture - ccr2_last
-				:ccr2_last - ccr2_capture
+		ccr2_last = ccr2;
+	// Calculate & store the duty cycle if this is the second measurement cycle
+	else if (ccr2_last != ccr2) {
+		cur_duty_cycle = (uint8_t) (0.5 * ( // Duty cycle is 1/2 of the full period
+			(ccr2 > ccr2_last)	// Determine if we've captured the pos or neg edge
+				?ccr2 - ccr2_last	// Pos (leading) edge
+				:ccr2_last - ccr2	// Neg (falling) edge
 			));
+		// Reset the last measured value for the next measurement cycle
 		ccr2_last = 0;
 	}
 }
@@ -124,12 +144,13 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-  initialise_monitor_handles();
+  // initialise_monitor_handles();
 
-  HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+  HAL_TIM_IC_Start_IT(&htim2, PWM_INPUT_CHANNEL);
+  HAL_TIM_PWM_Start(&htim1, PWM_OUTPUT_CHANNEL);
 
-  setDutyCycle(&htim1, TIM_CHANNEL_1, 50);
+	// Temporary
+  setDutyCycle(&htim1, PWM_OUTPUT_CHANNEL, 50);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -357,10 +378,36 @@ static void MX_USART2_UART_Init(void)
   */
 static void MX_GPIO_Init(void)
 {
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  /*Configure GPIO pin : PF1 */
+  GPIO_InitStruct.Pin = GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PA0 PA3 PA4 PA5
+                           PA6 PA7 PA9 PA10
+                           PA11 PA12 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5
+                          |GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_9|GPIO_PIN_10
+                          |GPIO_PIN_11|GPIO_PIN_12;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PB0 PB1 PB3 PB4
+                           PB5 PB6 PB7 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_3|GPIO_PIN_4
+                          |GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 }
 
