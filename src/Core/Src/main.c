@@ -63,6 +63,27 @@ void StartDefaultTask(void const * argument);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+/**
+ * @brief Sets the PWM duty cycle for the desired TIMER channel
+ * @param htim Timer handle
+ * @param channel PWM generation channel
+ * @param duty_cycle Desired duty cycle in percent. Resolution is calculated
+ * based on the period configured of the timer instance.
+ */
+static void setDutyCycle(TIM_HandleTypeDef* const htim,
+		uint32_t channel, float duty_cycle)
+{
+	// Constrain the provided duty cycle to avoid undefined behaviour
+	if (duty_cycle > 100) duty_cycle = 100;
+	if (duty_cycle < 0) duty_cycle = 0;
+
+	// Calculate the period resolution (1% of the period value)
+	float pw_resolution = ((float)htim->Init.Period + 1.0f) / 100.0f;
+	// Calculate & set the actual PWM period
+	uint16_t pw_desired = pw_resolution * duty_cycle;
+	__HAL_TIM_SET_COMPARE(htim, channel, pw_desired);
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -97,6 +118,11 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
+	// Start PWM generation on TIM2 CH1
+	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+
+	// Set PWM duty cycle generation on TIM2 CH1 to 50%
+	setDutyCycle(&htim2, TIM_CHANNEL_1, 50);
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
