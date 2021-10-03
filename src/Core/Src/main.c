@@ -47,6 +47,11 @@ TIM_HandleTypeDef htim2;
 osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
 
+/** Last captured timer period */
+uint32_t ccr2_last = 0;
+/** Last measured duty cycle */
+uint8_t cur_duty_cycle = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -117,6 +122,9 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
+
+	// Start PWM input capture on TIM1 CH2
+	HAL_TIM_IC_Start_IT(&htim1, TIM_CHANNEL_2);
 
 	// Start PWM generation on TIM2 CH1
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
