@@ -59,9 +59,11 @@
 extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim4;
 
+extern uint32_t TIM1_pwm_freq;
+extern float TIM1_pwm_duty;
+
 /* USER CODE BEGIN EV */
-extern uint32_t ccr2_last;
-extern uint8_t cur_duty_cycle;
+
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -168,22 +170,13 @@ void DebugMon_Handler(void)
 void TIM1_CC_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM1_CC_IRQn 0 */
-	/** Current timer period */
-	uint32_t ccr2 = HAL_TIM_ReadCapturedValue(&htim1, TIM_CHANNEL_2);
 
-	// If this is the first measurement cycle, just store the captured value
-	if (ccr2_last == 0)
-		ccr2_last = ccr2;
-	// Calculate & store the duty cycle if this is the second measurement cycle
-	else if (ccr2_last != ccr2) {
-		cur_duty_cycle = (uint8_t) (0.5 * ( // Duty cycle is 1/2 of the full period
-			(ccr2 > ccr2_last)	// Determine if we've captured the pos or neg edge
-				?ccr2 - ccr2_last	// Pos (leading) edge
-				:ccr2_last - ccr2	// Neg (falling) edge
-			));
-		// Reset the last measured value for the next measurement cycle
-		ccr2_last = 0;
-	}
+	// Calculate PWM input frequency (in Hz)
+	TIM1_pwm_freq = HAL_RCC_GetSysClockFreq() / (TIM1->PSC + 1) / TIM1->CCR2;
+
+	// Calculate PWM input duty cycle (in %)
+	TIM1_pwm_duty = (float) (TIM1->CCR2 - TIM1->CCR1) / (TIM1->CCR2 / 100.0f);
+
   /* USER CODE END TIM1_CC_IRQn 0 */
   HAL_TIM_IRQHandler(&htim1);
   /* USER CODE BEGIN TIM1_CC_IRQn 1 */
