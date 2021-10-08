@@ -78,17 +78,17 @@ void StartDefaultTask(void *argument);
  * based on the period configured of the timer instance.
  */
 static void setDutyCycle(TIM_HandleTypeDef* const htim,
-		uint32_t channel, float duty_cycle)
+    uint32_t channel, float duty_cycle)
 {
-	// Constrain the provided duty cycle to avoid undefined behaviour
-	if (duty_cycle > 100) duty_cycle = 100;
-	if (duty_cycle < 0) duty_cycle = 0;
+  // Constrain the provided duty cycle to avoid undefined behaviour
+  if (duty_cycle > 100) duty_cycle = 100;
+  if (duty_cycle < 0) duty_cycle = 0;
 
-	// Calculate the period resolution (1% of the period value)
-	float pw_resolution = ((float)htim->Init.Period + 1.0f) / 100.0f;
-	// Calculate & set the actual PWM period
-	uint16_t pw_desired = pw_resolution * duty_cycle;
-	__HAL_TIM_SET_COMPARE(htim, channel, pw_desired);
+  // Calculate the period resolution (1% of the period value)
+  float pw_resolution = ((float)htim->Init.Period + 1.0f) / 100.0f;
+  // Calculate & set the actual PWM period
+  uint16_t pw_desired = pw_resolution * duty_cycle;
+  __HAL_TIM_SET_COMPARE(htim, channel, pw_desired);
 }
 
 /* USER CODE END 0 */
@@ -100,14 +100,14 @@ static void setDutyCycle(TIM_HandleTypeDef* const htim,
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	tim1_irq_buffer = xMessageBufferCreate(
-		TIM1_IRQ_BUFFER_LENGTH * (sizeof(RegCCR) + sizeof(size_t))
-	);
-	/**
-	 * Assert will fail if there isn't sufficient FreeRTOS heap available for the
-	 * semaphore to be created successfully.
-	 */
-	assert_param(tim1_irq_buffer != NULL);
+  tim1_irq_buffer = xMessageBufferCreate(
+    TIM1_IRQ_BUFFER_LENGTH * (sizeof(RegCCR) + sizeof(size_t))
+  );
+  /**
+   * Assert will fail if there isn't sufficient FreeRTOS heap available for the
+   * semaphore to be created successfully.
+   */
+  assert_param(tim1_irq_buffer != NULL);
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -132,12 +132,12 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
-	// Start interrupts on TIM1 CH1 & CH2
-	HAL_TIM_IC_Start_IT(&htim1, TIM_CHANNEL_1);
-	HAL_TIM_IC_Start_IT(&htim1, TIM_CHANNEL_2);
+  // Start interrupts on TIM1 CH1 & CH2
+  HAL_TIM_IC_Start_IT(&htim1, TIM_CHANNEL_1);
+  HAL_TIM_IC_Start_IT(&htim1, TIM_CHANNEL_2);
 
-	// Start PWM generation on TIM2 CH1
-	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+  // Start PWM generation on TIM2 CH1
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
 
   /* USER CODE END 2 */
 
@@ -424,26 +424,26 @@ void StartDefaultTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-		// Sweep duty cycle of the PWM output up to 100%
-		for (uint8_t i = 0; i <= 100; i+=1) {
-			setDutyCycle(&htim2, TIM_CHANNEL_1, i);
+    // Sweep duty cycle of the PWM output up to 100%
+    for (uint8_t i = 0; i <= 100; i+=1) {
+      setDutyCycle(&htim2, TIM_CHANNEL_1, i);
 
-			osDelay(50);
-		}
+      osDelay(50);
+    }
 
-		osDelay(1000);
+    osDelay(1000);
 
-		for (uint8_t i = 100; i > 0; i-=1) {
-			setDutyCycle(&htim2, TIM_CHANNEL_1, i);
+    for (uint8_t i = 100; i > 0; i-=1) {
+      setDutyCycle(&htim2, TIM_CHANNEL_1, i);
 
-			osDelay(100);
-		}
-		// The above for loop can never actually go to 0, se here we do that
-		setDutyCycle(&htim2, TIM_CHANNEL_1, 0);
+      osDelay(100);
+    }
+    // The above for loop can never actually go to 0, se here we do that
+    setDutyCycle(&htim2, TIM_CHANNEL_1, 0);
 
-		// RegCCR tim1_ccr = { 0, 0 };
-		// xMessageBufferReceive(tim1_irq_buffer, &tim1_ccr,
-		// 	sizeof(tim1_ccr), portMAX_DELAY);
+    // RegCCR tim1_ccr = { 0, 0 };
+    // xMessageBufferReceive(tim1_irq_buffer, &tim1_ccr,
+    // 	sizeof(tim1_ccr), portMAX_DELAY);
   }
   /* USER CODE END 5 */
 }

@@ -174,23 +174,23 @@ void DebugMon_Handler(void)
 void TIM1_CC_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM1_CC_IRQn 0 */
-	
-	/**
-	 * Check if the CCR1 or CCR2 value of the PWM signal has changed since the
-	 * last CC IRQ
-	 * @note CCR1 value changes in relation to the PWM signal's duty cycle, but 
-	 * also the frequency
-	 * @note CCR2 value changes only in relation to the PWM signal's frequency
-	 */
-	if (TIM1->CCR1 != TIM1_last.CCR1 || TIM1->CCR2 != TIM1_last.CCR2) {
-		TIM1_last = (RegCCR) {
-			TIM1->CCR1,
-			TIM1->CCR2
-		};
 
-		xMessageBufferSendFromISR(tim1_irq_buffer, &TIM1_last,
-			sizeof(RegCCR), NULL);
-	}
+  /**
+   * Check if the CCR1 or CCR2 value of the PWM signal has changed since the
+   * last CC IRQ
+   * @note CCR1 value changes in relation to the PWM signal's duty cycle, but
+   * also the frequency
+   * @note CCR2 value changes only in relation to the PWM signal's frequency
+   */
+  if (TIM1->CCR1 != TIM1_last.CCR1 || TIM1->CCR2 != TIM1_last.CCR2) {
+    TIM1_last = (RegCCR) {
+      TIM1->CCR1,
+      TIM1->CCR2
+    };
+
+    xMessageBufferSendFromISR(tim1_irq_buffer, &TIM1_last,
+      sizeof(RegCCR), NULL);
+  }
 
   /* USER CODE END TIM1_CC_IRQn 0 */
   HAL_TIM_IRQHandler(&htim1);

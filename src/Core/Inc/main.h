@@ -39,8 +39,8 @@ extern "C" {
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
 typedef struct {
-	__IO uint32_t CCR1;
-	__IO uint32_t CCR2;
+  __IO uint32_t CCR1;
+  __IO uint32_t CCR2;
 } RegCCR;
 /* USER CODE END ET */
 
