@@ -32,12 +32,16 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <FreeRTOS.h>
+#include <message_buffer.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-
+typedef struct {
+	__IO uint32_t CCR1;
+	__IO uint32_t CCR2;
+} RegCCR;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/

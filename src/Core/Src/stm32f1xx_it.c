@@ -23,6 +23,7 @@
 #include "stm32f1xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,6 +44,9 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
 
+/** Stores the last known value of the TIM1 CCRx registers */
+RegCCR TIM1_last = { 0, 0 };
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -59,10 +63,10 @@
 extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim4;
 
-extern uint32_t TIM1_pwm_freq;
-extern float TIM1_pwm_duty;
-
 /* USER CODE BEGIN EV */
+
+/** Buffer for TIM1 PWM input changes */
+extern MessageBufferHandle_t tim1_irq_buffer;
 
 /* USER CODE END EV */
 
@@ -170,12 +174,23 @@ void DebugMon_Handler(void)
 void TIM1_CC_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM1_CC_IRQn 0 */
+	
+	/**
+	 * Check if the CCR1 or CCR2 value of the PWM signal has changed since the
+	 * last CC IRQ
+	 * @note CCR1 value changes in relation to the PWM signal's duty cycle, but 
+	 * also the frequency
+	 * @note CCR2 value changes only in relation to the PWM signal's frequency
+	 */
+	if (TIM1->CCR1 != TIM1_last.CCR1 || TIM1->CCR2 != TIM1_last.CCR2) {
+		TIM1_last = (RegCCR) {
+			TIM1->CCR1,
+			TIM1->CCR2
+		};
 
-	// Calculate PWM input frequency (in Hz)
-	TIM1_pwm_freq = HAL_RCC_GetSysClockFreq() / (TIM1->PSC + 1) / TIM1->CCR2;
-
-	// Calculate PWM input duty cycle (in %)
-	TIM1_pwm_duty = (float) (TIM1->CCR2 - TIM1->CCR1) / (TIM1->CCR2 / 100.0f);
+		xMessageBufferSendFromISR(tim1_irq_buffer, &TIM1_last,
+			sizeof(RegCCR), NULL);
+	}
 
   /* USER CODE END TIM1_CC_IRQn 0 */
   HAL_TIM_IRQHandler(&htim1);

@@ -19,6 +19,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -32,6 +33,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define TIM1_IRQ_BUFFER_LENGTH 8
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -43,14 +45,15 @@
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 
-/** Current PWM input frequency on the TIM1 CH1 & CH2 combined input */
-uint32_t TIM1_pwm_freq = 0;
-/** Current PWM duty cycle on the TIM1 CH1 & CH2 combined input */
-float TIM1_pwm_duty = 0;
-
-osThreadId defaultTaskHandle;
+/* Definitions for defaultTask */
+osThreadId_t defaultTaskHandle;
+const osThreadAttr_t defaultTask_attributes = {
+  .name = "defaultTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
 /* USER CODE BEGIN PV */
-
+MessageBufferHandle_t tim1_irq_buffer = NULL;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -58,6 +61,8 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
+void StartDefaultTask(void *argument);
+
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -95,7 +100,14 @@ static void setDutyCycle(TIM_HandleTypeDef* const htim,
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+	tim1_irq_buffer = xMessageBufferCreate(
+		TIM1_IRQ_BUFFER_LENGTH * (sizeof(RegCCR) + sizeof(size_t))
+	);
+	/**
+	 * Assert will fail if there isn't sufficient FreeRTOS heap available for the
+	 * semaphore to be created successfully.
+	 */
+	assert_param(tim1_irq_buffer != NULL);
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -129,6 +141,41 @@ int main(void)
 
   /* USER CODE END 2 */
 
+  /* Init scheduler */
+  osKernelInitialize();
+
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
+
+  /* USER CODE BEGIN RTOS_QUEUES */
+  /* add queues, ... */
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* creation of defaultTask */
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* add threads, ... */
+  /* USER CODE END RTOS_THREADS */
+
+  /* USER CODE BEGIN RTOS_EVENTS */
+  /* add events, ... */
+  /* USER CODE END RTOS_EVENTS */
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
@@ -157,7 +204,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI_DIV2;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL8;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL16;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -168,10 +215,10 @@ void SystemClock_Config(void)
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -198,7 +245,7 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 5 - 1;
+  htim1.Init.Prescaler = 4 - 1;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim1.Init.Period = 512 - 1;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -272,7 +319,7 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 5 - 1;
+  htim2.Init.Prescaler = 10 - 1;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim2.Init.Period = 256 - 1;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -363,6 +410,43 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 /* USER CODE END 4 */
+
+/* USER CODE BEGIN Header_StartDefaultTask */
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartDefaultTask */
+void StartDefaultTask(void *argument)
+{
+  /* USER CODE BEGIN 5 */
+  /* Infinite loop */
+  for(;;)
+  {
+		// Sweep duty cycle of the PWM output up to 100%
+		for (uint8_t i = 0; i <= 100; i+=1) {
+			setDutyCycle(&htim2, TIM_CHANNEL_1, i);
+
+			osDelay(50);
+		}
+
+		osDelay(1000);
+
+		for (uint8_t i = 100; i > 0; i-=1) {
+			setDutyCycle(&htim2, TIM_CHANNEL_1, i);
+
+			osDelay(100);
+		}
+		// The above for loop can never actually go to 0, se here we do that
+		setDutyCycle(&htim2, TIM_CHANNEL_1, 0);
+
+		// RegCCR tim1_ccr = { 0, 0 };
+		// xMessageBufferReceive(tim1_irq_buffer, &tim1_ccr,
+		// 	sizeof(tim1_ccr), portMAX_DELAY);
+  }
+  /* USER CODE END 5 */
+}
 
 /**
   * @brief  Period elapsed callback in non blocking mode
