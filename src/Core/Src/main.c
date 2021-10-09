@@ -33,7 +33,16 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+/** Maximum number of messages/events stored in the TIM1 IRQ buffer */
 #define TIM1_IRQ_BUFFER_LENGTH 2
+
+/**
+ * This duty cycle is used on edge-cases where calculations fail or receive
+ * invalid data
+ * The default value is 100
+ */
+#define FAILSAFE_DUTY_CYCLE 100
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -437,6 +446,7 @@ void StartDefaultTask(void *argument)
 		size_t recv_ret = xMessageBufferReceive(tim1_irq_buffer, &evt,
 			sizeof(evt), portMAX_DELAY);
 		// Continue waiting if the specified timeout expired
+    /** @todo Decrease timeout & trigger failsafe if reached */
 		if (recv_ret == 0) {
 			continue;
 		}
