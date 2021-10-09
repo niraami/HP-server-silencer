@@ -452,9 +452,9 @@ void StartDefaultTask(void *argument)
 		float pwm_duty = (float) (evt.CCR2 - evt.CCR1) / (evt.CCR2 / 100.0f);
 
     // Find the first curve range that matches our input
-    uint8_t curve_l = sizeof(k_curve) / sizeof(CurvePoint);
+    uint8_t n_curves = sizeof(k_curve) / sizeof(CurvePoint);
 
-    for (uint8_t i = 0; i < curve_l; i++) {
+    for (uint8_t i = 0; i < n_curves; i++) {
       CurvePoint point = k_curve[i];
 
       if (point.in_start < pwm_duty && point.in_end > pwm_duty) {
@@ -467,6 +467,11 @@ void StartDefaultTask(void *argument)
         setDutyCycle(&htim2, TIM_CHANNEL_1, target);
 
         break;
+      }
+
+      if (i + 1 == n_curves) {
+        // Set maximum duty cycle if no curve was found
+        setDutyCycle(&htim2, TIM_CHANNEL_1, 100);
       }
     }
   }
