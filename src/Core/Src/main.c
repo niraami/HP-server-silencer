@@ -23,7 +23,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "curves.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -33,7 +33,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define TIM1_IRQ_BUFFER_LENGTH 8
+#define TIM1_IRQ_BUFFER_LENGTH 2
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -138,6 +138,13 @@ int main(void)
 
   // Start PWM generation on TIM2 CH1
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+
+  /**
+   * Clear the TIM1 IRQ message queue, just in case anything got added during
+   * initialization
+   * @note This is mostly useful while using GDB for debugging
+   */
+  xMessageBufferReset(tim1_irq_buffer);
 
   /* USER CODE END 2 */
 
@@ -421,29 +428,47 @@ static void MX_GPIO_Init(void)
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
+	RegCCR evt = { 0, 0 };
+
   /* Infinite loop */
   for(;;)
   {
-    // Sweep duty cycle of the PWM output up to 100%
-    for (uint8_t i = 0; i <= 100; i+=1) {
-      setDutyCycle(&htim2, TIM_CHANNEL_1, i);
+		/** If > 0, we've received a message and it was stored to `evt` */
+		size_t recv_ret = xMessageBufferReceive(tim1_irq_buffer, &evt,
+			sizeof(evt), portMAX_DELAY);
+		// Continue waiting if the specified timeout expired
+		if (recv_ret == 0) {
+			continue;
+		}
 
-      osDelay(50);
+		/** Calculated input PWM frequency */
+		uint32_t pwm_freq = HAL_RCC_GetSysClockFreq() / (TIM1->PSC + 1) / evt.CCR2;
+		/** Ignore bogus input frequencies (outside of the PWM spec) */
+		if (pwm_freq > 28000 || pwm_freq < 21000) {
+			continue;
+		}
+
+		/** Calculated input PWM duty cycle as percentage */
+		float pwm_duty = (float) (evt.CCR2 - evt.CCR1) / (evt.CCR2 / 100.0f);
+
+    // Find the first curve range that matches our input
+    uint8_t curve_l = sizeof(k_curve) / sizeof(CurvePoint);
+
+    for (uint8_t i = 0; i < curve_l; i++) {
+      CurvePoint point = k_curve[i];
+
+      if (point.in_start < pwm_duty && point.in_end > pwm_duty) {
+        /** Target PWM duty cycle calculated based on the point's parameters */
+        float target = point.out_start + (
+          (point.out_end - point.out_start) * (pwm_duty - point.in_start) /
+            (point.in_end - point.in_start)
+        );
+        
+        setDutyCycle(&htim2, TIM_CHANNEL_1, target);
+
+        break;
+      }
     }
-
-    osDelay(1000);
-
-    for (uint8_t i = 100; i > 0; i-=1) {
-      setDutyCycle(&htim2, TIM_CHANNEL_1, i);
-
-      osDelay(100);
-    }
-    // The above for loop can never actually go to 0, se here we do that
-    setDutyCycle(&htim2, TIM_CHANNEL_1, 0);
-
-    // RegCCR tim1_ccr = { 0, 0 };
-    // xMessageBufferReceive(tim1_irq_buffer, &tim1_ccr,
-    // 	sizeof(tim1_ccr), portMAX_DELAY);
   }
   /* USER CODE END 5 */
 }
