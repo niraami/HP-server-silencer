@@ -460,6 +460,8 @@ void StartDefaultTask(void *argument)
 
 		/** Calculated input PWM duty cycle as percentage */
 		float pwm_duty = (float) (evt.CCR2 - evt.CCR1) / (evt.CCR2 / 100.0f);
+    // Invert the duty cycle, as it's polarity is reversed (low instead of high)
+    pwm_duty = 100.0f - pwm_duty;
 
     // Find the first curve range that matches our input
     uint8_t n_curves = sizeof(k_curve) / sizeof(CurvePoint);
@@ -480,8 +482,8 @@ void StartDefaultTask(void *argument)
       }
 
       if (i + 1 == n_curves) {
-        // Set maximum duty cycle if no curve was found
-        setDutyCycle(&htim2, TIM_CHANNEL_1, 100);
+        // Set failsafe duty cycle if no curve was found
+        setDutyCycle(&htim2, TIM_CHANNEL_1, FAILSAFE_DUTY_CYCLE);
       }
     }
   }
