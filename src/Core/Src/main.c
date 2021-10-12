@@ -34,8 +34,31 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-/** Maximum number of messages/events stored in the TIM1 IRQ buffer */
-#define TIM1_IRQ_BUFFER_LENGTH 2
+/**
+ * Maximum number of messages that are pending from the TIM1 IRQ handler. This
+ * buffer is used to handle bursts of messages from the IRQ - ex. when the PWM
+ * signal is slowly changing.
+ */
+#define TIM1_IRQ_BUFFER_MAX_BACKLOG 4
+
+/**
+ * Maximum number of messages/events stored in the TIM1 IRQ buffer
+ * This value directly affects how much smoothing is applied to the input signal
+ * @note High values may lead to artifacts
+ */
+#define TIM1_IRQ_BUFFER_LENGTH 8
+
+/**
+ * Maximum lifespan of a buffer entry (in ms)
+ * Specifies the maximum amount of time an entry is going to be counted into
+ * the input average. After this time, the entry is guaranteed to be thrown
+ * out. This might also happen much sooner if the interval at which the entries
+ * are being added into the buffer is smaller than this value divided by the
+ * buffer's length.
+ * @note I recommend setting this value to be neatly divisible by the buffer's
+ * length, otherwise rounding will take place anyways
+ */
+#define TIM1_IRQ_BUFFER_LIFESPAN 400
 
 /**
  * This duty cycle is used on edge-cases where calculations fail or receive
@@ -59,10 +82,28 @@ osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
   .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal1,
+};
+/* Definitions for inputFilter */
+osThreadId_t inputFilterHandle;
+const osThreadAttr_t inputFilter_attributes = {
+  .name = "inputFilter",
+  .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* USER CODE BEGIN PV */
-MessageBufferHandle_t tim1_irq_buffer = NULL;
+
+/**
+ * Message queue used to store reported CCR values from the TIM1_CC_IRQ handler
+ */
+MessageBufferHandle_t tim1_irq_backlog = NULL;
+/**
+ * A small buffer used to transfer the filtered signal from the input filter to
+ * the main thread.
+ */
+MessageBufferHandle_t tim1_filtered_buffer = NULL;
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -71,6 +112,7 @@ static void MX_GPIO_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
 void StartDefaultTask(void *argument);
+void InputFilterTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -109,14 +151,16 @@ static void setDutyCycle(TIM_HandleTypeDef* const htim,
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-  tim1_irq_buffer = xMessageBufferCreate(
-    TIM1_IRQ_BUFFER_LENGTH * (sizeof(RegCCR) + sizeof(size_t))
-  );
+  tim1_irq_backlog = xMessageBufferCreate(
+    TIM1_IRQ_BUFFER_MAX_BACKLOG * (sizeof(CCRPair) + sizeof(size_t)) );
+  tim1_filtered_buffer = xMessageBufferCreate(
+    (sizeof(CCRPair) + sizeof(size_t)) );
   /**
-   * Assert will fail if there isn't sufficient FreeRTOS heap available for the
-   * semaphore to be created successfully.
+   * Asserts will fail if there isn't sufficient FreeRTOS heap available for the
+   * buffers to be created successfully.
    */
-  assert_param(tim1_irq_buffer != NULL);
+  assert_param(tim1_irq_backlog != NULL);
+  assert_param(tim1_filtered_buffer != NULL);
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -153,7 +197,7 @@ int main(void)
    * initialization
    * @note This is mostly useful while using GDB for debugging
    */
-  xMessageBufferReset(tim1_irq_buffer);
+  xMessageBufferReset(tim1_irq_backlog);
 
   /* USER CODE END 2 */
 
@@ -179,6 +223,9 @@ int main(void)
   /* Create the thread(s) */
   /* creation of defaultTask */
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+
+  /* creation of inputFilter */
+  inputFilterHandle = osThreadNew(InputFilterTask, NULL, &inputFilter_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -437,29 +484,29 @@ static void MX_GPIO_Init(void)
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
-	RegCCR evt = { 0, 0 };
+  CCRPair evt = { 0, 0 };
 
   /* Infinite loop */
   for(;;)
   {
-		/** If > 0, we've received a message and it was stored to `evt` */
-		size_t recv_ret = xMessageBufferReceive(tim1_irq_buffer, &evt,
-			sizeof(evt), portMAX_DELAY);
-		// Continue waiting if the specified timeout expired
-    /** @todo Decrease timeout & trigger failsafe if reached */
-		if (recv_ret == 0) {
-			continue;
-		}
+    /** If > 0, we've received a message and it was stored to `evt` */
+    size_t recv = xMessageBufferReceive(tim1_filtered_buffer,
+      &evt, sizeof(evt), portMAX_DELAY);
 
-		/** Calculated input PWM frequency */
-		uint32_t pwm_freq = HAL_RCC_GetSysClockFreq() / (TIM1->PSC + 1) / evt.CCR2;
-		/** Ignore bogus input frequencies (outside of the PWM spec) */
-		if (pwm_freq > 28000 || pwm_freq < 21000) {
-			continue;
-		}
+    if (recv == 0) {
+      // Continue waiting if the specified timeout expired
+      continue;
+    }
 
-		/** Calculated input PWM duty cycle as percentage */
-		float pwm_duty = (float) (evt.CCR2 - evt.CCR1) / (evt.CCR2 / 100.0f);
+    /** Calculated input PWM frequency */
+    uint32_t pwm_freq = HAL_RCC_GetSysClockFreq() / (TIM1->PSC + 1) / evt.CCR2;
+    /** Ignore bogus input frequencies (outside of the PWM spec) */
+    if (pwm_freq > 28000 || pwm_freq < 21000) {
+      continue;
+    }
+
+    /** Calculated input PWM duty cycle as percentage */
+    float pwm_duty = (evt.CCR2 - evt.CCR1) / (evt.CCR2 / 100.0f);
     // Invert the duty cycle, as it's polarity is reversed (low instead of high)
     pwm_duty = 100.0f - pwm_duty;
 
@@ -475,7 +522,7 @@ void StartDefaultTask(void *argument)
           (point.out_end - point.out_start) * (pwm_duty - point.in_start) /
             (point.in_end - point.in_start)
         );
-        
+
         setDutyCycle(&htim2, TIM_CHANNEL_1, target);
 
         break;
@@ -488,6 +535,86 @@ void StartDefaultTask(void *argument)
     }
   }
   /* USER CODE END 5 */
+}
+
+/* USER CODE BEGIN Header_InputFilterTask */
+/**
+* @brief Function implementing the inputFilter thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_InputFilterTask */
+void InputFilterTask(void *argument)
+{
+  /* USER CODE BEGIN InputFilterTask */
+  CCRPair data[TIM1_IRQ_BUFFER_LENGTH] = {0};
+  CCRPair buffer = {0, 0};
+  CCRPair sum = {0, 0};
+
+  CCRPair* head_ptr = data;
+
+  size_t recv = 0;
+  size_t n_entries = 0;
+
+  /** Used to optimize CPU cycles when no action is required */
+  uint32_t cycle_ms = portMAX_DELAY;
+
+  /* Infinite loop */
+  for(;;)
+  {
+    // If > 0, we've received a message and it was stored to the buffer
+    recv = xMessageBufferReceive(tim1_irq_backlog, &buffer,
+      sizeof(CCRPair), cycle_ms);
+
+    if (!recv && n_entries <= 1) {
+      // Wait for a message indefinitely
+      cycle_ms = portMAX_DELAY;
+
+      continue;
+    } else {
+      cycle_ms = pdMS_TO_TICKS(
+        TIM1_IRQ_BUFFER_LIFESPAN / TIM1_IRQ_BUFFER_LENGTH );
+    }
+
+    // Remove the entry that is about to get overwritten from the sum
+    sum = (CCRPair) {
+      sum.CCR1 - head_ptr->CCR1,
+      sum.CCR2 - head_ptr->CCR2
+    };
+
+    if (!recv) {
+      // Clear the current entry if no message was received
+      *head_ptr = (CCRPair) {0, 0};
+      // Decrement the number of available entries
+      n_entries--;
+    } else {
+      // Append the new entry to the buffer & the rolling sum
+      *head_ptr = buffer;
+
+      sum = (CCRPair) {
+        sum.CCR1 + head_ptr->CCR1,
+        sum.CCR2 + head_ptr->CCR2
+      };
+
+      // Only increment the number of entries if the buffer isn't already full
+      if (n_entries < TIM1_IRQ_BUFFER_LENGTH) {
+        n_entries++;
+      }
+    }
+
+    // Push the head_ptr address forward & check for bounds
+    if (++head_ptr == &data[TIM1_IRQ_BUFFER_LENGTH]) {
+      head_ptr = data;
+    }
+
+    // Send new input value to the main task
+    CCRPair avg = {
+      sum.CCR1 / n_entries,
+      sum.CCR2 / n_entries
+    };
+    xMessageBufferSend(tim1_filtered_buffer, &avg, sizeof(CCRPair), 0);
+  }
+  /* USER CODE END InputFilterTask */
 }
 
 /**

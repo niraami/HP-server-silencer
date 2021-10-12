@@ -45,7 +45,7 @@
 /* USER CODE BEGIN PV */
 
 /** Stores the last known value of the TIM1 CCRx registers */
-RegCCR TIM1_last = { 0, 0 };
+CCRPair TIM1_last = { 0, 0 };
 
 /* USER CODE END PV */
 
@@ -66,7 +66,7 @@ extern TIM_HandleTypeDef htim4;
 /* USER CODE BEGIN EV */
 
 /** Buffer for TIM1 PWM input changes */
-extern MessageBufferHandle_t tim1_irq_buffer;
+extern MessageBufferHandle_t tim1_irq_backlog;
 
 /* USER CODE END EV */
 
@@ -183,13 +183,13 @@ void TIM1_CC_IRQHandler(void)
    * @note CCR2 value changes only in relation to the PWM signal's frequency
    */
   if (TIM1->CCR1 != TIM1_last.CCR1 || TIM1->CCR2 != TIM1_last.CCR2) {
-    TIM1_last = (RegCCR) {
+    TIM1_last = (CCRPair) {
       TIM1->CCR1,
       TIM1->CCR2
     };
 
-    xMessageBufferSendFromISR(tim1_irq_buffer, &TIM1_last,
-      sizeof(RegCCR), NULL);
+    xMessageBufferSendFromISR(tim1_irq_backlog, &TIM1_last,
+      sizeof(CCRPair), NULL);
   }
 
   /* USER CODE END TIM1_CC_IRQn 0 */

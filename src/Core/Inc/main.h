@@ -42,7 +42,7 @@ extern "C" {
 typedef struct {
   __IO uint32_t CCR1;
   __IO uint32_t CCR2;
-} RegCCR;
+} CCRPair;
 
 /* USER CODE END ET */
 
