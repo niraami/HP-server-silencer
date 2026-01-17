@@ -195,6 +195,18 @@ $(BUILD_DIR):
 #######################################
 clean:
 	-rm -fR $(BUILD_DIR)
+
+#######################################
+# flash
+#######################################
+flash: $(BUILD_DIR)/$(TARGET).elf
+	openocd -f interface/jlink.cfg -c "transport select swd" -f target/stm32f1x.cfg -c "program $(BUILD_DIR)/$(TARGET).elf verify reset exit"
+
+#######################################
+# debug
+#######################################
+debug: $(BUILD_DIR)/$(TARGET).elf
+	openocd -f interface/jlink.cfg -c "transport select swd" -f target/stm32f1x.cfg
   
 #######################################
 # dependencies
